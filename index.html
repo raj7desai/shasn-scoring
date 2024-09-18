@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Multiplayer Elo Rating Calculator</title>
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    margin: 20px;
+  }
+  h1 {
+    text-align: center;
+  }
+  .player-inputs, .options, .results {
+    max-width: 600px;
+    margin: 20px auto;
+  }
+  .player-inputs div, .options div {
+    margin-bottom: 10px;
+  }
+  .player-inputs label, .options label {
+    display: inline-block;
+    width: 100px;
+  }
+  .results {
+    text-align: center;
+  }
+  table {
+    margin: 0 auto;
+    border-collapse: collapse;
+    width: 80%;
+  }
+  table, th, td {
+    border: 1px solid #888;
+  }
+  th, td {
+    padding: 8px;
+    text-align: center;
+  }
+  .calculate-button {
+    display: block;
+    margin: 20px auto;
+  }
+</style>
+</head>
+<body>
+
+<h1>Multiplayer Elo Rating Calculator</h1>
+
+<div class="player-inputs">
+  <h2>Player Ratings and Placements</h2>
+  <div>
+    <label for="player1-rating">Player 1 Rating:</label>
+    <input type="number" id="player1-rating" value="1600">
+    <label for="player1-placement">Placement:</label>
+    <input type="number" id="player1-placement" value="3">
+  </div>
+  <div>
+    <label for="player2-rating">Player 2 Rating:</label>
+    <input type="number" id="player2-rating" value="1500">
+    <label for="player2-placement">Placement:</label>
+    <input type="number" id="player2-placement" value="2">
+  </div>
+  <div>
+    <label for="player3-rating">Player 3 Rating:</label>
+    <input type="number" id="player3-rating" value="1400">
+    <label for="player3-placement">Placement:</label>
+    <input type="number" id="player3-placement" value="1">
+  </div>
+  <div>
+    <label for="player4-rating">Player 4 Rating:</label>
+    <input type="number" id="player4-rating" value="1300">
+    <label for="player4-placement">Placement:</label>
+    <input type="number" id="player4-placement" value="4">
+  </div>
+  <div>
+    <label for="player5-rating">Player 5 Rating:</label>
+    <input type="number" id="player5-rating" value="1200">
+    <label for="player5-placement">Placement:</label>
+    <input type="number" id="player5-placement" value="5">
+  </div>
+</div>
+
+<div class="options">
+  <h2>Options</h2>
+  <div>
+    <label for="k-factor">K-Factor:</label>
+    <input type="number" id="k-factor" value="32">
+  </div>
+  <div>
+    <label for="score-function">Score Function:</label>
+    <select id="score-function">
+      <option value="linear">Linear</option>
+      <option value="exponential">Exponential</option>
+    </select>
+  </div>
+  <div id="alpha-input" style="display: none;">
+    <label for="alpha-value">Alpha Value:</label>
+    <input type="number" id="alpha-value" value="2" step="0.1" min="1.01">
+  </div>
+</div>
+
+<button class="calculate-button" onclick="calculateEloUpdates()">Calculate Updated Ratings</button>
+
+<div class="results" id="results"></div>
+
+<script>
+  document.getElementById('score-function').addEventListener('change', function() {
+    const alphaInput = document.getElementById('alpha-input');
+    if (this.value === 'exponential') {
+      alphaInput.style.display = 'block';
+    } else {
+      alphaInput.style.display = 'none';
+    }
+  });
+
+  function calculateEloUpdates() {
+    const ratings = [
+      parseFloat(document.getElementById('player1-rating').value),
+      parseFloat(document.getElementById('player2-rating').value),
+      parseFloat(document.getElementById('player3-rating').value),
+      parseFloat(document.getElementById('player4-rating').value),
+      parseFloat(document.getElementById('player5-rating').value)
+    ];
+
+    const placements = [
+      parseFloat(document.getElementById('player1-placement').value),
+      parseFloat(document.getElementById('player2-placement').value),
+      parseFloat(document.getElementById('player3-placement').value),
+      parseFloat(document.getElementById('player4-placement').value),
+      parseFloat(document.getElementById('player5-placement').value)
+    ];
+
+    const K = parseFloat(document.getElementById('k-factor').value);
+    const scoreFunction = document.getElementById('score-function').value;
+    const alpha = parseFloat(document.getElementById('alpha-value').value);
+
+    const N = ratings.length;
+    let E = [];
+    let totalE = 0;
+
+    // Calculate pairwise expected scores and total expected scores
+    for (let i = 0; i < N; i++) {
+      E[i] = 0;
+      for (let j = 0; j < N; j++) {
+        if (i !== j) {
+          const E_ij = 1 / (1 + Math.pow(10, (ratings[j] - ratings[i]) / 400));
+          E[i] += E_ij;
+        }
+      }
+      totalE += E[i];
+    }
+
+    // Normalize expected scores
+    let E_normalized = E.map(e => e / totalE);
+
+    // Handle ties by averaging placements
+    let placementCounts = {};
+    for (let i = 0; i < N; i++) {
+      const placement = placements[i];
+      if (placementCounts[placement]) {
+        placementCounts[placement].push(i);
+      } else {
+        placementCounts[placement] = [i];
+      }
+    }
+
+    let adjustedPlacements = [];
+    for (let i = 0; i < N; i++) {
+      const placement = placements[i];
+      const tiedPlayers = placementCounts[placement];
+      if (tiedPlayers.length > 1) {
+        const avgPlacement = tiedPlayers.reduce((sum, idx) => sum + placements[idx], 0) / tiedPlayers.length;
+        adjustedPlacements[i] = avgPlacement;
+      } else {
+        adjustedPlacements[i] = placement;
+      }
+    }
+
+    // Calculate actual scores
+    let S = [];
+    if (scoreFunction === 'linear') {
+      const S_total = (N * (N - 1)) / 2;
+      for (let i = 0; i < N; i++) {
+        S[i] = (N - adjustedPlacements[i]) / S_total;
+      }
+    } else if (scoreFunction === 'exponential') {
+      let denom = 0;
+      for (let k = 1; k <= N; k++) {
+        denom += Math.pow(alpha, N - k) - 1;
+      }
+      for (let i = 0; i < N; i++) {
+        const numerator = Math.pow(alpha, N - adjustedPlacements[i]) - 1;
+        S[i] = numerator / denom;
+      }
+    }
+
+    // Calculate rating updates
+    let deltaR = [];
+    for (let i = 0; i < N; i++) {
+      deltaR[i] = K * N * (S[i] - E_normalized[i]);
+    }
+
+    // Update ratings
+    let newRatings = [];
+    for (let i = 0; i < N; i++) {
+      newRatings[i] = ratings[i] + deltaR[i];
+    }
+
+    // Display results
+    displayResults(ratings, adjustedPlacements, E_normalized, S, deltaR, newRatings);
+  }
+
+  function displayResults(ratings, placements, E_normalized, S, deltaR, newRatings) {
+    let resultsDiv = document.getElementById('results');
+    resultsDiv.innerHTML = `
+      <h2>Updated Ratings</h2>
+      <table>
+        <tr>
+          <th>Player</th>
+          <th>Initial Rating</th>
+          <th>Placement</th>
+          <th>Expected Score (E)</th>
+          <th>Actual Score (S)</th>
+          <th>Rating Change (ΔR)</th>
+          <th>New Rating</th>
+        </tr>
+        ${ratings.map((rating, i) => `
+          <tr>
+            <td>Player ${i + 1}</td>
+            <td>${rating.toFixed(2)}</td>
+            <td>${placements[i]}</td>
+            <td>${E_normalized[i].toFixed(4)}</td>
+            <td>${S[i].toFixed(4)}</td>
+            <td>${deltaR[i].toFixed(2)}</td>
+            <td>${newRatings[i].toFixed(2)}</td>
+          </tr>
+        `).join('')}
+      </table>
+    `;
+  }
+</script>
+
+</body>
+</html>
+
